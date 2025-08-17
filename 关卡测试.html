@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>三人小队 · 竖版手游UI + 房间解谜 + BOSS</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #0b0f14; color: #e6f0ff; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; }
+  #game { display: block; width: 100vw; height: 100vh; touch-action: none; background: radial-gradient(1200px 800px at 50% 40%, #0f1720, #0b0f14 70%); }
+
+  /* ===== HUD ===== */
+  .hud { position: fixed; inset: 0; pointer-events: none; }
+  .topbar { position: absolute; left: 8px; right: 8px; top: 8px; padding: 10px 12px; border-radius: 12px; border: 2px solid rgba(129,140,248,.5); background: rgba(17,24,39,.5); backdrop-filter: blur(4px);
+            display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+  .lvxp { display: grid; gap: 6px; }
+  .lvtxt { font-weight: 700; letter-spacing: .3px; text-align: center; opacity:.9; }
+  .xpbar { position: relative; height: 10px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; border: 1px solid rgba(255,255,255,.18); }
+  .xpfill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: linear-gradient(90deg, #a78bfa, #22d3ee); }
+  .pause-wrap { position: relative; width: 56px; height: 56px; }
+  .pause { position: absolute; right: 0; bottom: -6px; width: 52px; height: 52px; border-radius: 50%; border: none; background: #0f172a; color: #f8fafc; font-weight: 800; pointer-events: auto;
+           box-shadow: 0 6px 18px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.15); }
+
+  .items { position: absolute; left: 14px; top: 72px; font-size: 14px; line-height: 1.6; pointer-events: none; }
+  .items span { display: inline-block; min-width: 72px; }
+
+  .rightActions { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); display: grid; gap: 14px; }
+  .actionBtn { width: 56px; height: 56px; border-radius: 50%; border: none; pointer-events: auto; background: #ef4444; color: #000; font-weight: 800; box-shadow: 0 10px 22px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.18); }
+
+  .joyzone { position: absolute; left: 8px; right: 8px; bottom: 36px; top: 52vh; border-radius: 12px; border: 2px solid rgba(129,140,248,.5); background: rgba(30,41,59,.25); pointer-events: none; }
+  .joyhint { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; color: #cbd5e1; font-size: 13px; pointer-events: none; }
+  .helpbar { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 13px; color: #cbd5e1; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none; }
+
+  /* 动态摇杆（随触出现） */
+  .dynStick { position: absolute; width: 180px; height: 180px; transform: translate(-50%,-50%); border-radius: 50%; background: rgba(255,255,255,.08); border: 1px dashed rgba(255,255,255,.18); display: none; pointer-events: auto; }
+  .dynKnob { position: absolute; left: 50%; top: 50%; width: 68px; height: 68px; margin-left: -34px; margin-top: -34px; border-radius: 50%; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.18); box-shadow: 0 6px 14px rgba(0,0,0,.35); }
+
+  /* 开始/结束遮罩 */
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: linear-gradient(180deg, rgba(11,15,20,.85), rgba(11,15,20,.75)); }
+  .panel { width: min(820px, 92vw); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); padding: 18px; border-radius: 16px; text-align: center; }
+  .panel h1 { font-weight: 800; letter-spacing: .5px; margin: 8px 0 6px; }
+  .panel p { opacity: .85; margin: 0 0 12px; }
+  .btn { display: inline-block; padding: 12px 16px; border-radius: 14px; background: linear-gradient(90deg, #60a5fa, #22d3ee); color: #00111a; border: none; cursor: pointer; font-weight: 700; letter-spacing: .3px; pointer-events: auto; }
+
+  /* ===== Buff 三选一弹窗 ===== */
+  .buffModal { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.45); z-index: 40; }
+  .buffModal.show { display: grid; }
+  .buffPanel { width: min(420px, 86vw); padding: 18px 16px; border-radius: 16px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(6px); pointer-events: auto; }
+  .buffTitle { text-align: center; font-weight: 800; margin-bottom: 12px; letter-spacing: .3px; }
+  .buffWrap { display: grid; gap: 12px; }
+  .buffBtn { width: 100%; height: 48px; border-radius: 10px; background: rgba(99,102,241,.12); border: 2px solid rgba(99,102,241,.5); color:#e5e7eb; font-weight:700; letter-spacing:.3px; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div class="hud">
+    <div class="topbar">
+      <div class="lvxp">
+        <div class="lvtxt">Lv <span id="lvtxt">1</span></div>
+        <div class="xpbar"><div class="xpfill" id="xpfill"></div></div>
+      </div>
+      <div class="pause-wrap"><button id="pauseBtn" class="pause">暂停</button></div>
+    </div>
+
+    <div class="items" id="itemText"><span>洛阳铲：</span>0　<span>镜片：</span>0</div>
+
+    <div class="rightActions">
+      <button class="actionBtn" id="actBtn">交</button>
+      <button class="actionBtn" id="compassBtn">盘</button>
+    </div>
+
+    <div class="joyzone"></div>
+    <div class="joyhint">通关说明：起始房→战斗房清怪→解谜房集齐镜片并调镜柱(1/3/2)→BOSS房击败粽子魁首</div>
+    <div class="helpbar">提示：下半屏按住出现摇杆；靠近可交互物时点右侧“交”。</div>
+
+    <div id="dynStick" class="dynStick"><div id="dynKnob" class="dynKnob"></div></div>
+  </div>
+
+  <!-- 开始 / 结束 -->
+  <div id="startOverlay" class="overlay">
+    <div class="panel">
+      <h1>三人小队 · 竖版手游操作</h1>
+      <p style="opacity:.8">下半屏随触摇杆；右侧交互/罗盘；顶部仅显示等级与经验。</p>
+      <button class="btn" id="startBtn">开始游戏</button>
+    </div>
+  </div>
+
+  <div id="overOverlay" class="overlay" style="display:none;">
+    <div class="panel">
+      <h1 id="overTitle">挑战结束</h1>
+      <p id="overStats">你坚持了 00:00</p>
+      <button class="btn" id="restartBtn">再来一次</button>
+    </div>
+  </div>
+
+  <!-- Buff 三选一弹窗 -->
+  <div id="buffModal" class="buffModal">
+    <div class="buffPanel">
+      <div class="buffTitle">选择一个增益</div>
+      <div id="buffWrap" class="buffWrap"></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ===== Helpers ===== */
+  const TAU = Math.PI*2;
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  const rand = (a,b)=>Math.random()*(b-a)+a;
+  const dist2=(a,b)=>{const dx=a.x-b.x,dy=a.y-b.y;return dx*dx+dy*dy;}
+  function rectsOverlap(a,b){return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;}
+  function resolveCircleRect(c,r){
+    const nx = clamp(c.x, r.x, r.x+r.w), ny = clamp(c.y, r.y, r.y+r.h);
+    const dx = c.x-nx, dy = c.y-ny, d2 = dx*dx+dy*dy, rr = c.r*c.r;
+    if(d2<rr){ const d=Math.sqrt(d2)||.0001, o=(c.r-d); c.x+=(dx/d)*o; c.y+=(dy/d)*o; return true; } return false;
+  }
+  const formatTime = (sec)=>`${Math.floor(sec/60).toString().padStart(2,'0')}:${Math.floor(sec%60).toString().padStart(2,'0')}`;
+
+  /* ===== Canvas ===== */
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+  let viewW=720, viewH=1280;
+  const world={ w:3600, h:3600 };
+  const camera={ x:0, y:0 };
+  function resize(){ viewW=innerWidth; viewH=innerHeight; canvas.width=Math.floor(viewW*DPR); canvas.height=Math.floor(viewH*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); }
+  addEventListener('resize', resize); resize();
+
+  /* ===== UI refs ===== */
+  const xpfill = document.getElementById('xpfill');
+  const lvTxt = document.getElementById('lvtxt');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const itemText = document.getElementById('itemText');
+  const startOverlay = document.getElementById('startOverlay');
+  const overOverlay = document.getElementById('overOverlay');
+  const overTitle = document.getElementById('overTitle');
+  const overStats = document.getElementById('overStats');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const actBtn = document.getElementById('actBtn');
+  const compassBtn = document.getElementById('compassBtn');
+  const buffModal = document.getElementById('buffModal');
+  const buffWrap = document.getElementById('buffWrap');
+
+  /* ===== Input: 随触摇杆 ===== */
+  const dynStick = document.getElementById('dynStick');
+  const dynKnob  = document.getElementById('dynKnob');
+  let stickActive=false, stickVec={x:0,y:0}, stickCenter={x:0,y:0};
+  const maxStick=70;
+  function showStick(x,y){ dynStick.style.left=x+'px'; dynStick.style.top=y+'px'; dynStick.style.display='block'; stickCenter.x=x; stickCenter.y=y; }
+  function hideStick(){ dynStick.style.display='none'; stickActive=false; stickVec.x=stickVec.y=0; dynKnob.style.left='50%'; dynKnob.style.top='50%'; dynKnob.style.marginLeft='-34px'; dynKnob.style.marginTop='-34px'; }
+  function updateKnob(x,y){
+    const dx=x-stickCenter.x, dy=y-stickCenter.y; const len=Math.hypot(dx,dy)||1; const nx=dx/len, ny=dy/len; const mag=clamp(len,0,maxStick-40);
+    dynKnob.style.left=(stickCenter.x + nx*mag)+'px'; dynKnob.style.top=(stickCenter.y + ny*mag)+'px'; dynKnob.style.marginLeft='-34px'; dynKnob.style.marginTop='-34px';
+    stickVec.x = clamp(dx/(maxStick-40), -1, 1); stickVec.y = clamp(dy/(maxStick-40), -1, 1);
+    const nm=Math.hypot(stickVec.x,stickVec.y); if(nm>1){ stickVec.x/=nm; stickVec.y/=nm; }
+  }
+  const keys=new Set();
+  addEventListener('keydown',e=>{ keys.add(e.key.toLowerCase()); if(e.key===' ') e.preventDefault(); });
+  addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+  function isBottomHalf(y){ return y >= innerHeight*0.5; }
+  function onPointerDown(e){ if(state.paused) return; const t=e.touches?e.touches[0]:e; const x=t.clientX,y=t.clientY; if(isBottomHalf(y)){ stickActive=true; showStick(x,y); updateKnob(x,y); e.preventDefault(); } }
+  function onPointerMove(e){ if(!stickActive||state.paused) return; const t=e.touches?e.touches[0]:e; updateKnob(t.clientX,t.clientY); }
+  function onPointerUp(){ hideStick(); }
+  addEventListener('touchstart', onPointerDown, {passive:false});
+  addEventListener('touchmove',  onPointerMove,  {passive:false});
+  addEventListener('touchend',   onPointerUp,    {passive:false});
+  addEventListener('mousedown', onPointerDown);
+  addEventListener('mousemove', onPointerMove);
+  addEventListener('mouseup',   onPointerUp);
+
+  /* ===== Game State ===== */
+  const state={ running:false, paused:false, time:0, lastFrame:performance.now() };
+  const inv={ shovel:0, luopan:true, mirrorPieces:0, puzzleSolved:false };
+
+  const heroes=[
+    { id:'hb1', name:'胡八一', x:0, y:0, r:14, color:'#10b981', hp:100, maxHp:100, speed:220, dashSpeed:600, dashCd:0, fireCd:0, fireRate:3.8, dmg:16, type:'pierce', bulletSpeed:640, count:1 },
+    { id:'sry', name:'Shirley杨', x:0, y:0, r:13, color:'#8b5cf6', hp:90, maxHp:90, speed:225, dashSpeed:580, dashCd:0, fireCd:0, fireRate:0.0, dmg:22, type:'lightcone', lightA:0, lightRange:160, lightHalf:0.55 },
+    { id:'wpz', name:'王胖子', x:0, y:0, r:15, color:'#f59e0b', hp:120, maxHp:120, speed:208, dashSpeed:620, dashCd:0, fireCd:0, fireRate:1.2, dmg:32, type:'grenade', bulletSpeed:420, count:1 },
+  ];
+  const baseFormation=[{x:0,y:0},{x:-26,y:20},{x:26,y:20}];
+  const party={ x:world.w/2, y:world.h/2, dirX:0, dirY:1 };
+
+  const bullets=[], enemies=[], orbs=[], particles=[];
+  const rooms=[], walls=[], doors=[], interactables=[];
+  const level={ lv:1, exp:0 }; const xpForLevel=(lv)=>Math.floor(24*Math.pow(1.32, lv-1));
+  let pickupRange=140, spawnTimer=0, spawnRate=.8, bossSpawn=null;
+  const mirrorSolution=[1,3,2]; const luopanPing={t:0};
+
+  function addRoom(x,y,w,h,type){ const room={x,y,w,h,type,started:false,cleared:false}; rooms.push(room);
+    const t=6; walls.push({x:x, y:y, w:w, h:t}); walls.push({x:x, y:y+h-t, w:w, h:t}); walls.push({x:x, y:y, w:t, h:h}); walls.push({x:x+w-t, y:y, w:t, h:h}); return room; }
+  function addDoor(cx,cy,w,h,opts){ const d={x:cx-w/2,y:cy-h/2,w,h,open:!!opts.open,key:opts.key||null}; doors.push(d); return d; }
+
+  function buildDungeon(){
+    rooms.length=walls.length=doors.length=interactables.length=0;
+    const start = addRoom(world.w/2-240, world.h/2+260, 480, 340, 'start');
+    const combat= addRoom(world.w/2-260, world.h/2-20, 520, 360, 'combat');
+    const puzzle= addRoom(world.w/2-280, world.h/2-420, 560, 360, 'puzzle');
+    const boss  = addRoom(world.w/2-300, world.h/2-860, 600, 420, 'boss');
+    addDoor(world.w/2, start.y, 60, 12, { open:true });
+    addDoor(world.w/2, combat.y, 60, 12, { open:false, key:'afterCombat' });
+    addDoor(world.w/2, puzzle.y, 60, 12, { open:false, key:'afterPuzzle' });
+
+    const cx=world.w/2, cy=puzzle.y+puzzle.h/2-100;
+    interactables.push({ type:'crate', x: cx-140, y: cy+40, r:16, opened:false });
+    interactables.push({ type:'dig', x: cx-180, y: cy+120, r:18, dug:false });
+    interactables.push({ type:'dig', x: cx+120, y: cy-60,  r:18, dug:false });
+    interactables.push({ type:'dig', x: cx,      y: cy+140, r:18, dug:false });
+    interactables.push({ type:'mirror', label:'A', x: cx-160, y: cy-60,  r:18, rot:0 });
+    interactables.push({ type:'mirror', label:'B', x: cx,     y: cy-100, r:18, rot:0 });
+    interactables.push({ type:'mirror', label:'C', x: cx+160, y: cy-60,  r:18, rot:0 });
+
+    bossSpawn = { x: world.w/2, y: boss.y + boss.h/2 - 60 };
+    doors.forEach(d=>d._wasOpen = !!d.open);
+  }
+
+  function clipWallsByOpenDoors(){
+    const solids=[], open=doors.filter(d=>d.open);
+    for(const w of walls){
+      let clipped=false;
+      for(const d of open){
+        if(!rectsOverlap(w,d)) continue;
+        if(w.h<=8){ const leftW=d.x-w.x, rightW=(w.x+w.w)-(d.x+d.w);
+          if(leftW>2) solids.push({x:w.x,y:w.y,w:leftW,h:w.h});
+          if(rightW>2) solids.push({x:d.x+d.w,y:w.y,w:rightW,h:w.h});
+          clipped=true; break; }
+        if(w.w<=8){ const topH=d.y-w.y, botH=(w.y+w.h)-(d.y+d.h);
+          if(topH>2) solids.push({x:w.x,y:w.y,w:w.w,h:topH});
+          if(botH>2) solids.push({x:w.x,y:d.y+d.h,w:w.w,h:botH});
+          clipped=true; break; }
+      }
+      if(!clipped) solids.push(w);
+    }
+    solids.push(...doors.filter(d=>!d.open));
+    return solids;
+  }
+
+  function canOpenDoor(d){
+    if(!d.key) return true;
+    if(d.key==='afterCombat'){ const cr=rooms.find(r=>r.type==='combat'); return cr&&cr.cleared; }
+    if(d.key==='afterPuzzle') return !!inv.puzzleSolved;
+    return false;
+  }
+  function fxPoof(x,y,c='#9bd',n=10){ for(let i=0;i<n;i++) particles.push({ x,y, vx:rand(-80,80), vy:rand(-80,80), life:rand(.25,.6), r:rand(1,3), c }); }
+  function fxDoorOpen(d){ const cx=d.x+d.w/2, cy=d.y+d.h/2; for(let i=0;i<20;i++){ const a=Math.random()*TAU; particles.push({x:cx,y:cy,vx:Math.cos(a)*120,vy:Math.sin(a)*120,life:.35+Math.random()*.3,r:2+Math.random()*2,c:'#a7f3d0'}) } }
+
+  /* ===== 升级 & Buff 弹窗 ===== */
+  const baseUpgrades=[
+    { id:'team_spd',  name:'全队移动 +12%', desc:'更快走位与风筝', apply(){ heroes.forEach(h=>h.speed*=1.12); } },
+    { id:'team_pick', name:'吸附范围 +120',  desc:'更容易吃经验球',  apply(){ pickupRange+=120; } },
+    { id:'team_vit',  name:'全队体魄 +15%', desc:'提升上限并小回', apply(){ heroes.forEach(h=>{ h.maxHp=Math.floor(h.maxHp*1.15); h.hp=Math.min(h.maxHp, h.hp+Math.floor(h.maxHp*0.2)); }); } },
+  ];
+  function heroUpgradesFor(h){ return [
+    { id:`${h.id}_rate`,  name:`【${h.name}】攻速 +20%`, desc:'更短冷却', apply(){ if(h.type==='lightcone'){ h.lightHalf=Math.min(h.lightHalf+0.08,0.9);} else { h.fireRate*=1.2; } } },
+    { id:`${h.id}_dmg`,   name:`【${h.name}】伤害 +25%`, desc:'专精火力', apply(){ h.dmg*=1.25; } },
+    { id:`${h.id}_count`, name:`【${h.name}】范围/弹幕 +1`, desc:'覆盖更广', apply(){ if(h.type==='lightcone'){ h.lightRange+=20; } else if(h.type==='grenade'){ h.count=Math.min((h.count||1)+1,3);} else { h.count+=1; } } },
+  ]; }
+  function pickUpgrades(){
+    const pool=baseUpgrades.slice();
+    const cand=heroes.flatMap(heroUpgradesFor);
+    for(let i=0;i<5;i++) pool.push(cand[Math.floor(Math.random()*cand.length)]);
+    const picks=[], tmp=pool.slice();
+    while(picks.length<3 && tmp.length) picks.push(tmp.splice(Math.floor(Math.random()*tmp.length),1)[0]);
+    return picks;
+  }
+  function showUpgrades(){
+    const picks=pickUpgrades();
+    buffWrap.innerHTML='';
+    picks.forEach(u=>{
+      const btn=document.createElement('button');
+      btn.className='buffBtn';
+      btn.textContent=u.name;
+      btn.title=u.desc;
+      btn.onclick=()=>{ u.apply(); hideBuff(); };
+      buffWrap.appendChild(btn);
+    });
+    state.paused=true;
+    buffModal.classList.add('show');
+  }
+  function hideBuff(){ buffModal.classList.remove('show'); state.paused=false; }
+
+  /* ===== 生成/流程 ===== */
+  function spawnEnemy(type,x,y){
+    type = type || (Math.random()>.85?'tank':(Math.random()>.6?'runner':'grunt'));
+    const e={ x:x||0, y:y||0, r:12, hp:16, maxHp:16, speed:90, type, dmg:10 };
+    if(type==='runner'){ e.r=10; e.hp=e.maxHp=10; e.speed=150; e.dmg=7; }
+    if(type==='tank'){ e.r=16; e.hp=e.maxHp=46; e.speed=62; e.dmg=16; }
+    enemies.push(e);
+  }
+  function startGame(){
+    buildDungeon();
+    state.running=true; state.paused=false; state.time=0; level.lv=1; level.exp=0;
+    inv.shovel=0; inv.mirrorPieces=0; inv.puzzleSolved=false;
+    const startRoom=rooms.find(r=>r.type==='start');
+    party.x=world.w/2; party.y=startRoom.y+startRoom.h/2-40; party.dirX=0; party.dirY=-1;
+    heroes[0].x=party.x; heroes[0].y=party.y; heroes[1].x=party.x-26; heroes[1].y=party.y+20; heroes[2].x=party.x+26; heroes[2].y=party.y+20;
+    bullets.length=enemies.length=orbs.length=particles.length=0; spawnTimer=0; spawnRate=.7;
+    startOverlay.style.display='none'; overOverlay.style.display='none';
+    updateItemText(); lvTxt.textContent=level.lv;
+  }
+  function doGameOver(){ state.running=false; overTitle.textContent='挑战结束'; overStats.textContent=`用时 ${formatTime(state.time)}`; overOverlay.style.display='grid'; }
+  function doVictory(){ state.running=false; overTitle.textContent='粽子魁首已斩 · 成功脱出'; overStats.textContent=`用时 ${formatTime(state.time)}`; overOverlay.style.display='grid'; }
+  startBtn.onclick=startGame; restartBtn.onclick=startGame;
+  pauseBtn.onclick=()=>{ state.paused=!state.paused; pauseBtn.textContent=state.paused?'继续':'暂停'; };
+  addEventListener('keydown',e=>{ if(e.key.toLowerCase()==='p'){ state.paused=!state.paused; pauseBtn.textContent=state.paused?'继续':'暂停'; } if(e.key.toLowerCase()==='e'){ const n=nearestInteractable(); if(n) interact(n);} if(e.key.toLowerCase()==='q'){ useLuopan(); } });
+  document.getElementById('actBtn').onclick=()=>{ const n=nearestInteractable(); if(n) interact(n); };
+  document.getElementById('compassBtn').onclick=useLuopan;
+
+  /* ===== 关卡/逻辑 ===== */
+  function currentRoomOf(x,y){ return rooms.find(r=>x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h); }
+  function startCombatIfNeeded(room){ if(!room||room.type!=='combat'||room.started) return; room.started=true; room.spawnTime=0; room.waveFor=14; }
+  function ensureBoss(room){ if(!room||room.type!=='boss') return; if(!enemies.some(e=>e.type==='boss')){ const b={ x:bossSpawn.x, y:bossSpawn.y, r:24, hp:1200, maxHp:1200, speed:70, dmg:25, type:'boss', dashCd:3, sumCd:5 }; enemies.push(b); } }
+
+  function tryOpenPuzzleDoor(){
+    const mirrors=interactables.filter(o=>o.type==='mirror');
+    const okPieces=inv.mirrorPieces>=3;
+    const okRot=mirrors.length===3 && mirrors.every((m,i)=>m.rot===mirrorSolution[i]);
+    if(okPieces && okRot){ inv.puzzleSolved=true; doors.forEach(d=>{ if(d.key==='afterPuzzle') d.open=true; }); }
+  }
+  function nearestInteractable(){ const r=46; let best=null,bestD=Infinity; for(const o of interactables){ const d=Math.hypot(o.x-party.x, o.y-party.y); if(d<r && d<bestD){ best=o; bestD=d; } } return best; }
+  function interact(o){
+    if(!o) return;
+    if(o.type==='crate' && !o.opened){ o.opened=true; inv.shovel+=3; fxPoof(o.x,o.y,'#9f9',12); flashItemText(); }
+    else if(o.type==='dig' && !o.dug){ if(inv.shovel>0){ inv.shovel-=1; o.dug=true; inv.mirrorPieces=Math.min(3,inv.mirrorPieces+1); fxPoof(o.x,o.y,'#bdf',12); flashItemText(); tryOpenPuzzleDoor(); } }
+    else if(o.type==='mirror'){ o.rot=(o.rot+1)%4; fxPoof(o.x,o.y,'#eef',8); tryOpenPuzzleDoor(); }
+  }
+  function useLuopan(){ luopanPing.t=6; }
+
+  /* ===== Update / Render ===== */
+  function update(dt){
+    if(!state.running||state.paused) return; state.time+=dt;
+
+    // 移动 & 编队
+    let ix=stickVec.x, iy=stickVec.y; if(ix===0&&iy===0){ if(keys.has('w')||keys.has('arrowup')) iy-=1; if(keys.has('s')||keys.has('arrowdown')) iy+=1; if(keys.has('a')||keys.has('arrowleft')) ix-=1; if(keys.has('d')||keys.has('arrowright')) ix+=1; }
+    const m=Math.hypot(ix,iy); if(m>0){ ix/=m; iy/=m; party.dirX=lerp(party.dirX,ix,.25); party.dirY=lerp(party.dirY,iy,.25); }
+    const ang=Math.atan2(party.dirY,party.dirX)+Math.PI, cos=Math.cos(ang), sin=Math.sin(ang);
+    const off=baseFormation.map((o,i)=>({x:o.x*cos-o.y*sin+Math.sin(state.time*1.2+i*1.8)*3, y:o.x*sin+o.y*cos+Math.cos(state.time*1.4+i*2.0)*3}));
+    heroes.forEach(h=>{ h.x+=ix*h.speed*dt; h.y+=iy*h.speed*dt; });
+    for(let i=0;i<heroes.length;i++) for(let j=i+1;j<heroes.length;j++){ const a=heroes[i],b=heroes[j]; const dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1; if(d<28){ const push=(28-d)/2,nx=dx/d,ny=dy/d; a.x+=nx*push; a.y+=ny*push; b.x-=nx*push; b.y-=ny*push; } }
+    let cx=0,cy=0; heroes.forEach(h=>{cx+=h.x;cy+=h.y;}); cx/=heroes.length; cy/=heroes.length; party.x=cx; party.y=cy;
+    heroes.forEach((h,i)=>{ const tx=party.x+off[i].x,ty=party.y+off[i].y; h.x=lerp(h.x,tx,.12); h.y=lerp(h.y,ty,.12); });
+
+    // 门：靠近自动开
+    for (const d of doors) {
+      if(!d.open && canOpenDoor(d)){
+        const dx=party.x-(d.x+d.w/2), dy=party.y-(d.y+d.h/2);
+        if(Math.hypot(dx,dy)<80) d.open=true;
+      }
+      if(d.open && !d._wasOpen) fxDoorOpen(d);
+      d._wasOpen=d.open;
+    }
+
+    const solids=clipWallsByOpenDoors();
+    heroes.forEach(h=>{ for(const r of solids) resolveCircleRect(h,r); h.x=clamp(h.x,16,world.w-16); h.y=clamp(h.y,16,world.h-16); });
+
+    // 相机
+    camera.x=lerp(camera.x,party.x,.12); camera.y=lerp(camera.y,party.y,.12);
+
+    // 房间/刷怪
+    const room=currentRoomOf(party.x,party.y);
+    startCombatIfNeeded(room);
+    if(room && room.type==='boss') ensureBoss(room);
+    if(room){ spawnTimer+=dt*(spawnRate+(room.type==='combat'?0.8:0)); while(spawnTimer>=1){ spawnTimer-=1; const rx=rand(room.x+40,room.x+room.w-40), ry=rand(room.y+40,room.y+room.h-40); spawnEnemy(null,rx,ry); } }
+    const cr=rooms.find(r=>r.type==='combat');
+    if(cr && cr.started){ cr.spawnTime+=dt; if(cr.spawnTime>cr.waveFor && enemies.filter(e=>currentRoomOf(e.x,e.y)===cr && e.type!=='boss').length===0){ cr.cleared=true; doors.forEach(d=>{ if(d.key==='afterCombat') d.open=true; }); } }
+
+    // 敌人与战斗
+    for(let i=enemies.length-1;i>=0;i--){ const e=enemies[i];
+      if(e.type==='boss'){ const dx=party.x-e.x,dy=party.y-e.y,d=Math.hypot(dx,dy)||1; e.x+=(dx/d)*70*dt; e.y+=(dy/d)*70*dt; e.dashCd=(e.dashCd||3)-dt; e.sumCd=(e.sumCd||5)-dt; if(e.dashCd<=0){ e.dashCd=3.2; e.x+=(dx/d)*240; e.y+=(dy/d)*240; fxPoof(e.x,e.y,'#f99',16); } if(e.sumCd<=0){ e.sumCd=6.5; for(let k=0;k<6;k++){ const a=Math.random()*TAU; spawnEnemy('runner', e.x+Math.cos(a)*80, e.y+Math.sin(a)*80); } } } else { const dx=party.x-e.x,dy=party.y-e.y,d=Math.hypot(dx,dy)||1; e.x+=(dx/d)*e.speed*dt; e.y+=(dy/d)*e.speed*dt; }
+      for(const r of solids) resolveCircleRect(e,r);
+      heroes.forEach(h=>{ const rr=h.r+e.r; const hx=h.x-e.x, hy=h.y-e.y; if(hx*hx+hy*hy<rr*rr){ h.hp-= (e.dmg||10)*dt*0.8; e.x-=hx*0.02; e.y-=hy*0.02; } });
+      if(e.hp<=0){ enemies.splice(i,1); orbs.push({x:e.x,y:e.y,r:5,xp:5+Math.floor(Math.random()*4)}); fxPoof(e.x,e.y,'#9ff',12); if(e.type==='boss'){ doVictory(); } }
+    }
+
+    // 英雄攻击
+    function shootPierce(h,target){ const ang=Math.atan2(target.y-h.y,target.x-h.x); for(let i=0;i<h.count;i++){ const a=ang+(i-(h.count-1)/2)*0.06; bullets.push({owner:h.id,type:'pierce',x:h.x,y:h.y,vx:Math.cos(a)*(h.bulletSpeed||600),vy:Math.sin(a)*(h.bulletSpeed||600),r:4,life:1.2,dmg:h.dmg,pierce:2}); } }
+    function shootGrenade(h,target){ const ang=Math.atan2(target.y-h.y,target.x-h.x); const sp=h.bulletSpeed||420; bullets.push({owner:h.id,type:'grenade',x:h.x,y:h.y,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,r:5,life:.9,dmg:h.dmg,boomR:100}); }
+    function explode(x,y,r,damage){ for(let j=enemies.length-1;j>=0;j--){ const e=enemies[j]; const d=Math.hypot(e.x-x,e.y-y); if(d<r){ e.hp -= damage*(1-d/r*0.5); } } for(let k=0;k<10;k++){ const a=Math.random()*TAU; bullets.push({owner:'aoe',type:'shrapnel',x,y,vx:Math.cos(a)*500,vy:Math.sin(a)*500,r:3,life:.15,dmg:0}); } for(let i=0;i<20;i++) fxPoof(x,y,'#ffd',1); }
+    heroes.forEach(h=>{
+      if(h.type==='lightcone'){ h.lightA=(h.lightA||0)+dt*1.4; const range=h.lightRange,half=h.lightHalf,dps=h.dmg; for(const e of enemies){ const dx=e.x-h.x,dy=e.y-h.y,d=Math.hypot(dx,dy); if(d<range){ const a=Math.atan2(dy,dx); let diff=Math.atan2(Math.sin(a-h.lightA),Math.cos(a-h.lightA)); if(Math.abs(diff)<half){ e.hp -= dps*dt; } } } }
+      else { h.fireCd-=dt; if(h.fireCd<=0 && enemies.length){ let target=null,best=Infinity; for(const e of enemies){ const d2=dist2(h,e); if(d2<best){ best=d2; target=e; } } if(target){ if(h.type==='pierce') shootPierce(h,target); else if(h.type==='grenade') shootGrenade(h,target); h.fireCd = 1/Math.max(0.0001,h.fireRate); } } }
+    });
+
+    // 子弹
+    for(let i=bullets.length-1;i>=0;i--){ const b=bullets[i]; b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt;
+      let hitWall=false; const solids2=clipWallsByOpenDoors(); for(const r of solids2){ const bx=b.x,by=b.y; if(resolveCircleRect(b,r)){ hitWall=true; b.x=bx; b.y=by; break; } }
+      if(b.type==='grenade' && b.life<=0){ explode(b.x,b.y,b.boomR,b.dmg*2.2); bullets.splice(i,1); continue; }
+      if(b.life<=0||hitWall){ bullets.splice(i,1); continue; }
+      for(let j=enemies.length-1;j>=0;j--){ const e=enemies[j]; const dx=e.x-b.x, dy=e.y-b.y, rr=e.r+b.r; if(dx*dx+dy*dy<rr*rr){ e.hp-=b.dmg; fxPoof(b.x,b.y,'#aef',5); if(b.type==='pierce'){ if(--b.pierce<0) bullets.splice(i,1); } else bullets.splice(i,1); break; } }
+    }
+
+    // 经验 & 升级
+    for(let i=orbs.length-1;i>=0;i--){ const o=orbs[i]; const dx=party.x-o.x,dy=party.y-o.y,d=Math.hypot(dx,dy)||1; if(d<pickupRange){ o.x+=(dx/d)*260*dt; o.y+=(dy/d)*260*dt; }
+      for(const h of heroes){ if(Math.hypot(h.x-o.x,h.y-o.y)<h.r+o.r){ orbs.splice(i,1); level.exp+=o.xp; break; } } }
+    const need=xpForLevel(level.lv); if(level.exp>=need){ level.exp-=need; level.lv++; lvTxt.textContent=level.lv; showUpgrades(); }
+
+    // UI
+    xpfill.style.width = clamp(level.exp/xpForLevel(level.lv),0,1)*100+'%';
+    if(luopanPing.t>0) luopanPing.t-=dt;
+    const near=nearestInteractable(); actBtn.style.opacity = near ? 1 : .35;
+  }
+
+  function drawRooms(){
+    for(const r of rooms){ const sx=r.x-camera.x+viewW/2, sy=r.y-camera.y+viewH/2; ctx.fillStyle=r.type==='boss'?'rgba(255,60,60,.06)':'rgba(255,255,255,.04)'; ctx.fillRect(sx,sy,r.w,r.h); }
+    ctx.fillStyle='rgba(200,220,255,.12)'; for(const w of walls){ const sx=w.x-camera.x+viewW/2, sy=w.y-camera.y+viewH/2; ctx.fillRect(sx,sy,w.w,w.h); }
+    for(const d of doors){ const sx=d.x-camera.x+viewW/2, sy=d.y-camera.y+viewH/2; ctx.fillStyle=d.open?'rgba(34,197,94,.3)':'rgba(148,163,184,.6)'; ctx.fillRect(sx,sy,d.w,d.h); }
+  }
+  function drawInteractables(){
+    for(const o of interactables){ const sx=Math.floor(o.x-camera.x+viewW/2), sy=Math.floor(o.y-camera.y+viewH/2); ctx.save();
+      if(o.type==='crate'){ ctx.fillStyle='#86efac'; ctx.fillRect(sx-12,sy-12,24,24); drawLabel(sx,sy-18,o.opened?'洛阳铲+3(已取)':'木箱(洛阳铲×3)'); }
+      else if(o.type==='dig'){ ctx.fillStyle=(luopanPing.t>0)?'#60a5fa':'#94a3b8'; ctx.beginPath(); ctx.arc(sx,sy,10,0,TAU); ctx.fill(); drawLabel(sx,sy-18,o.dug?'松土(已挖)':'松土(耗1把铲)'); }
+      else if(o.type==='mirror'){ ctx.strokeStyle='#c7d2fe'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,16,0,TAU); ctx.stroke(); const ang=(o.rot*(TAU/4))-Math.PI/2; ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx+Math.cos(ang)*18, sy+Math.sin(ang)*18); ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.stroke(); drawLabel(sx,sy-22,`镜柱${o.label} 角度:${o.rot}`); }
+      ctx.restore(); }
+  }
+  function drawLabel(x,y,text){ ctx.font='12px system-ui, sans-serif'; ctx.textAlign='center'; ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(x-70,y-12,140,16); ctx.fillStyle='#e5e7eb'; ctx.fillText(text,x,y); }
+
+  function render(){
+    ctx.clearRect(0,0,viewW,viewH);
+    drawRooms(); drawInteractables();
+    for(const o of orbs){ const sx=Math.floor(o.x-camera.x+viewW/2), sy=Math.floor(o.y-camera.y+viewH/2); ctx.beginPath(); ctx.arc(sx,sy,o.r,0,TAU); ctx.fillStyle='#7dd3fc'; ctx.fill(); ctx.strokeStyle='rgba(0,0,0,.4)'; ctx.stroke(); }
+    for(const e of enemies){ const sx=Math.floor(e.x-camera.x+viewW/2), sy=Math.floor(e.y-camera.y+viewH/2); ctx.beginPath(); ctx.arc(sx,sy,e.r,0,TAU); ctx.fillStyle=(e.type==='boss')?'#ef4444':(e.type==='runner'?'#fbbf24':(e.type==='tank'?'#f87171':'#93c5fd')); ctx.fill(); const w=e.r*2; const hpw=w*(e.hp/e.maxHp); ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(sx-e.r, sy-e.r-8, w, 4); ctx.fillStyle='#22d3ee'; ctx.fillRect(sx-e.r, sy-e.r-8, hpw, 4); }
+    for(const b of bullets){ const sx=Math.floor(b.x-camera.x+viewW/2), sy=Math.floor(b.y-camera.y+viewH/2); ctx.beginPath(); ctx.arc(sx,sy,b.r,0,TAU); ctx.fillStyle=(b.type==='grenade')?'#fde68a':'#e2e8f0'; ctx.fill(); }
+    for(const p of particles){ const sx=Math.floor(p.x-camera.x+viewW/2), sy=Math.floor(p.y-camera.y+viewH/2); ctx.globalAlpha=Math.max(0,p.life*1.5); ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(sx,sy,p.r,0,TAU); ctx.fill(); ctx.globalAlpha=1; }
+    heroes.forEach(h=>{ const sx=Math.floor(h.x-camera.x+viewW/2), sy=Math.floor(h.y-camera.y+viewH/2);
+      if(h.type==='lightcone'){ ctx.save(); ctx.globalAlpha=.25; ctx.beginPath(); ctx.moveTo(sx,sy); ctx.arc(sx,sy,h.lightRange, h.lightA-h.lightHalf, h.lightA+h.lightHalf); ctx.closePath(); ctx.fillStyle='#fef3c7'; ctx.fill(); ctx.restore(); }
+      ctx.beginPath(); ctx.arc(sx,sy,h.r,0,TAU); ctx.fillStyle=h.color; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.stroke();
+      ctx.font='bold 13px system-ui, sans-serif'; ctx.textAlign='center'; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.6)'; ctx.strokeText(h.name, sx, sy-h.r-14); ctx.fillStyle=h.color; ctx.fillText(h.name, sx, sy-h.r-14);
+      const w=30, hh=5; const hpw=w*(h.hp/h.maxHp); ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(sx-w/2, sy-h.r-10, w, hh); ctx.fillStyle='#22d3ee'; ctx.fillRect(sx-w/2, sy-h.r-10, hpw, hh);
+    });
+  }
+
+  function frame(t){ const now=t||performance.now(); const dt=Math.min(0.033,(now-state.lastFrame)/1000); state.lastFrame=now; update(dt); render(); requestAnimationFrame(frame); }
+  requestAnimationFrame(frame);
+
+  function updateItemText(){ itemText.innerHTML=`<span>洛阳铲：</span>${inv.shovel}　<span>镜片：</span>${inv.mirrorPieces}`; }
+  function flashItemText(){ updateItemText(); itemText.style.transition='none'; itemText.style.transform='translateY(-2px)'; itemText.style.opacity='0.6'; requestAnimationFrame(()=>{ itemText.style.transition='all .18s ease'; itemText.style.transform='translateY(0)'; itemText.style.opacity='1'; }); }
+
+})();
+</script>
+</body>
+</html>
